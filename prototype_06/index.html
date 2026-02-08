@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slime Racing Prototype</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        /* Celebration Popup */
+        #celebration-popup {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: #FFD700;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            z-index: 2000;
+            border: 3px solid #FFD700;
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.5);
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes popIn {
+            from {
+                transform: translate(-50%, -50%) scale(0.5);
+                opacity: 0;
+            }
+
+            to {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 1;
+            }
+        }
+
+        #celebration-popup h1 {
+            margin: 0;
+            font-size: 3em;
+            text-shadow: 2px 2px 0px #000;
+        }
+
+        #celebration-popup p {
+            margin: 10px 0 0;
+            font-size: 1.5em;
+            color: #fff;
+        }
+
+        /* Review 4: Sound Control Buttons */
+        #sound-controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+        }
+
+        .sound-btn {
+            width: 44px;
+            height: 44px;
+            border: 2px solid #4CAF50;
+            border-radius: 10px;
+            background: rgba(76, 175, 80, 0.3);
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+        }
+
+        .sound-btn:hover {
+            background: rgba(76, 175, 80, 0.5);
+            transform: scale(1.05);
+        }
+
+        .sound-btn.off {
+            background: rgba(100, 100, 100, 0.5);
+            border-color: #888;
+            box-shadow: none;
+        }
+
+        .sound-btn.off::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 120%;
+            height: 4px;
+            background: #ff4444;
+            transform: translate(-50%, -50%) rotate(-45deg);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Review 4: Sound Control Buttons -->
+    <div id="sound-controls">
+        <button id="bgm-btn" class="sound-btn" title="배경음악">🎵</button>
+        <button id="sfx-btn" class="sound-btn" title="효과음">🔊</button>
+    </div>
+
+    <div id="game-container">
+        <div id="celebration-popup">
+            <h1 id="celebration-name"></h1>
+            <p>1등으로 도착했습니다! 🎉</p>
+        </div>
+
+        <div id="ui-layer">
+            <div id="start-screen">
+                <h1>Slime Racing</h1>
+                <div class="control-group">
+                    <label>참여 인원:
+                        <select id="player-count">
+                            <option value="10">10명</option>
+                        </select>
+                    </label>
+                </div>
+                <!-- Bulk Input Removed -->
+                <div id="player-list"
+                    style="max-height: 250px; overflow-y: auto; margin-bottom: 15px; border: 1px solid #444; padding: 10px; border-radius: 5px; background: #333;">
+                    <!-- Dynamic inputs will be generated here -->
+                </div>
+                <div class="control-group">
+                    <label>맵 길이:
+                        <select id="map-length">
+                            <option value="short">짧음</option>
+                            <option value="medium" selected>보통</option>
+                            <option value="long">김</option>
+                        </select>
+                    </label>
+                </div>
+                <button id="start-btn">게임 시작</button>
+            </div>
+            <div id="results-screen" style="display: none;">
+                <h2>경기 결과</h2>
+                <ul id="rank-list"></ul>
+                <button id="restart-btn">다시 시작</button>
+            </div>
+            <div id="game-hud" style="display: none;">
+                <div id="minimap-container"
+                    style="position: fixed; top: 20px; right: 20px; width: 120px; height: 300px; background: rgba(0,0,0,0.6); border: 2px solid #555; border-radius: 5px; z-index: 100;">
+                    <canvas id="minimap-canvas" width="120" height="300"></canvas>
+                </div>
+                <div id="bottom-rank-hud"
+                    style="position: fixed; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.8); color: white; padding: 10px; font-size: 14px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; z-index: 100;">
+                    <!-- Rank items will be injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+
+</html>
