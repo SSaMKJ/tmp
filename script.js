@@ -190,6 +190,7 @@ function playSfxWall() {
 }
 
 // DOM Elements
+let lastObstacleType = null; // Review 16: Track last obstacle
 const startScreen = document.getElementById('start-screen');
 const resultsScreen = document.getElementById('results-screen');
 const gameHud = document.getElementById('game-hud');
@@ -262,12 +263,12 @@ function initUI() {
         const option = document.createElement('option');
         option.value = i;
         option.textContent = `${i}명`;
-        if (i === 10) option.selected = true;
+        if (i === 5) option.selected = true;
         playerCountSelect.appendChild(option);
     }
 
     // Initial List Generation
-    generatePlayerInputs(10);
+    generatePlayerInputs(5);
 
     // Event Listeners
     playerCountSelect.addEventListener('change', (e) => {
@@ -333,7 +334,8 @@ function initMatter() {
             width: containerWidth,
             height: containerHeight,
             wireframes: false,
-            background: '#222',
+            // Review 13: Transparent background for custom rendering
+            background: 'transparent',
             pixelRatio: window.devicePixelRatio,
             showAngleIndicator: false
         }
@@ -359,6 +361,9 @@ function initMatter() {
     // Game Loop for custom logic (Camera, Updates)
     Events.on(engine, 'beforeUpdate', updateGame);
 
+    // Review 13: Dynamic Background (Sky & Clouds)
+
+
     // Hook for custom rendering (Visual Polish v2)
     Events.on(render, 'afterRender', function () {
         const ctx = render.context;
@@ -367,8 +372,32 @@ function initMatter() {
 
         slimes.forEach(slime => {
             // Note: slime.render.visible is now false, so we MUST draw everything manually here
+            let position = slime.position;
+            let velocity = slime.velocity;
+            const circleRadius = slime.circleRadius;
 
-            let { position, velocity, circleRadius } = slime;
+            // Review 10: Draw Afterimages (Ghosts) first
+            if (slime.gameData.afterimages && slime.gameData.afterimages.length > 0) {
+                slime.gameData.afterimages.forEach(ghost => {
+                    const viewX = ghost.x - render.bounds.min.x;
+                    const viewY = ghost.y - render.bounds.min.y;
+
+                    ctx.save();
+                    ctx.translate(viewX, viewY);
+                    // Slight vertical stretch for speed illusion on ghosts too
+                    ctx.scale(ghost.scale * 0.9, ghost.scale * 1.1);
+
+                    ctx.globalAlpha = ghost.opacity * 0.3; // Very subtle
+                    ctx.fillStyle = slime.render.fillStyle; // Same color
+
+                    ctx.beginPath();
+                    ctx.arc(0, 0, slime.circleRadius, 0, 2 * Math.PI);
+                    ctx.fill();
+
+                    ctx.restore();
+                });
+                ctx.globalAlpha = 1.0; // Reset alpha for main body
+            }
 
             // REVIEW 5: Decoupled Render for Absolute Lock
             if (slime.gameData.finished && slime.gameData.fixedPosition) {
@@ -381,26 +410,46 @@ function initMatter() {
             const viewX = position.x - render.bounds.min.x;
             const viewY = position.y - render.bounds.min.y;
 
-            // Squash & Stretch Calculation
-            const speed = Math.sqrt(velocity.x ** 2 + velocity.y ** 2);
-            let scaleX = 1;
-            let scaleY = 1;
-
-            // Stretch along velocity vector
-            if (Math.abs(velocity.y) > 5) {
-                scaleY = 1 + Math.min(Math.abs(velocity.y) * 0.02, 0.3);
-                scaleX = 1 / scaleY; // Preserve volume
-            }
-
             // Apply Transform
             ctx.save();
             ctx.translate(viewX, viewY);
+
+            const speed = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
+
+            // Review: Simplify Animation (Elongated Ellipse)
+            if (speed > 1) {
+                const angle = Math.atan2(velocity.y, velocity.x);
+                ctx.rotate(angle - Math.PI / 2); // Rotate so Y-axis aligns with velocity
+            }
+
+            // Stretch based on speed
+            let scaleY = 1;
+            let scaleX = 1;
+
+            if (speed > 5) {
+                const stretchFactor = Math.min(speed * 0.05, 0.6); // Max 60% stretch
+                scaleY = 1 + stretchFactor;
+                scaleX = 1 / scaleY; // Preserve volume (Correct Squash & Stretch)
+            }
+
             ctx.scale(scaleX, scaleY);
 
-            // Draw Body (Manual Render for Ultimate Freeze compatibility)
-            ctx.beginPath();
-            ctx.arc(0, 0, radius, 0, 2 * Math.PI);
+            // Draw Body (Simple Circle -> Becomes Ellipse)
             ctx.fillStyle = slime.render.fillStyle;
+            ctx.beginPath();
+            ctx.arc(0, 0, circleRadius, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Outline
+            ctx.lineWidth = 2 / Math.max(scaleX, scaleY); // Keep line width consistent
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.stroke();
+
+            // Highlight (Jelly look)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.beginPath();
+            // Highlight position adjusted for rotation
+            ctx.ellipse(-circleRadius * 0.3, -circleRadius * 0.3, circleRadius * 0.4, circleRadius * 0.25, -Math.PI / 4, 0, Math.PI * 2);
             ctx.fill();
 
             // Draw Eyes (Simple Face)
@@ -519,6 +568,8 @@ function initMatter() {
 
         // Feature: Draw Minimap
         drawMinimap();
+
+
     });
 }
 
@@ -665,10 +716,10 @@ function startGame() {
 
     const difficulty = mapLengthInput.value;
 
-    // Set map height based on difficulty
-    if (difficulty === 'short') mapHeight = 4000;
-    else if (difficulty === 'medium') mapHeight = 7000;
-    else mapHeight = 10000; // Long -> XL
+    // Set map height based on difficulty (Review 1: Halved lengths)
+    if (difficulty === 'short') mapHeight = 2000;
+    else if (difficulty === 'medium') mapHeight = 3500;
+    else mapHeight = 5000; // Long -> XL
 
     // Gather data from UI
     const nameInputs = document.querySelectorAll('.player-name-input');
@@ -809,25 +860,34 @@ function generateMap() {
 }
 
 function addRandomObstacle(y, mapWidthAtY) {
-    const type = Math.random();
+    let type = Math.random();
     const x = (Math.random() - 0.5) * (mapWidthAtY - 150); // Use dynamic width
+
+    // Review 16: Prevent consecutive spinners
+    if (type >= 0.4 && type < 0.6 && lastObstacleType === 'spinner') {
+        type = 0.3; // Fallback to Pin
+    }
 
     if (type < 0.4) {
         // Static Pin (Circle)
-        const pin = Bodies.circle(x, y, 15, {
+        // Review 16: Pin size increased x1.5 (15 -> 22.5)
+        const pin = Bodies.circle(x, y, 22.5, {
             isStatic: true,
             label: 'pin',
             render: { fillStyle: '#aaa' },
             restitution: 0.8
         });
         Composite.add(engine.world, pin);
+        lastObstacleType = 'pin';
+
     } else if (type < 0.6) {
         // Spinner
-        const width = 120 + Math.random() * 80;
+        // Review 17: Reduce max size by 4/5 (0.8x)
+        const width = (120 + Math.random() * 80) * 0.8;
         const spinner = Bodies.rectangle(x, y, width, 15, {
             isStatic: false,
             label: 'spinner',
-            render: { fillStyle: '#E91E63' },
+            render: { fillStyle: '#673AB7', strokeStyle: '#E91E63', lineWidth: 2 }, // Deep Purple + Pink Stroke
             density: 0.1,
             frictionAir: 0
         });
@@ -841,14 +901,14 @@ function addRandomObstacle(y, mapWidthAtY) {
         });
 
         Composite.add(engine.world, [spinner, constraint]);
+        lastObstacleType = 'spinner';
 
     } else if (type < 0.7) {
         // Sliding Wall (We need to construct it differently or update it in loop)
-        // Let's create a body and mark it for custom update
         const slider = Bodies.rectangle(x, y, 100, 20, {
             isStatic: true, // We will move its position manually
             label: 'slider',
-            render: { fillStyle: '#03A9F4' },
+            render: { fillStyle: '#FF5722', strokeStyle: '#FFC107', lineWidth: 2 }, // Deep Orange + Yellow Stroke
             custom: {
                 startX: x,
                 range: 100,
@@ -857,10 +917,12 @@ function addRandomObstacle(y, mapWidthAtY) {
             }
         });
         Composite.add(engine.world, slider);
+        lastObstacleType = 'slider';
+
     } else if (type < 0.8) {
         // Speed Booster (Sensor)
         // Feature: Random Duration (0.1s - 1.0s)
-        const duration = (0.1 + Math.random() * 0.9).toFixed(1); // 1 decimal place
+        const duration = (0.1 + Math.random() * 0.9).toFixed(1);
 
         const booster = Bodies.rectangle(x, y, 80, 20, {
             isStatic: true,
@@ -868,10 +930,12 @@ function addRandomObstacle(y, mapWidthAtY) {
             label: 'booster',
             render: { fillStyle: 'rgba(255, 235, 59, 0.5)' },
             custom: {
-                duration: parseFloat(duration) // Store as number
+                duration: parseFloat(duration)
             }
         });
         Composite.add(engine.world, booster);
+        lastObstacleType = 'booster';
+
     } else if (type < 0.9) {
         // Spring (Bouncy Block)
         const spring = Bodies.rectangle(x, y, 60, 20, {
@@ -881,6 +945,7 @@ function addRandomObstacle(y, mapWidthAtY) {
             restitution: 1.5 // Extra bouncy
         });
         Composite.add(engine.world, spring);
+        lastObstacleType = 'spring';
     }
 }
 
@@ -922,7 +987,9 @@ function spawnSlimes(players) {
             lastY: y,
             stuckTimer: 0,
             boostTimer: 0, // Review 9: Duration-based boost
-            deformation: { x: 1, y: 1 } // For squash effect
+            deformation: { x: 1, y: 1 }, // For squash effect
+            // Review 10: Booster Afterimage Effect
+            afterimages: []
         };
 
         slimes.push(slime);
@@ -1049,7 +1116,11 @@ function updateGame(event) {
         }
 
         // Anti-tunneling: Clamp max velocity
-        const maxVelocity = 18;
+        // Review: Increase max velocity for better speed feel
+        // Normal: 25 (was 18), Boost: 40
+        const maxVelocity = (slime.gameData.boostTimer > 0) ? 40 : 25;
+
+        // Apply clamping per axis or magnitude
         if (Math.abs(slime.velocity.y) > maxVelocity) {
             Body.setVelocity(slime, {
                 x: slime.velocity.x,
@@ -1061,6 +1132,29 @@ function updateGame(event) {
                 x: Math.sign(slime.velocity.x) * maxVelocity,
                 y: slime.velocity.y
             });
+        }
+
+        // Review 10: Booster Afterimage Logic
+        const speed = Math.sqrt(slime.velocity.x ** 2 + slime.velocity.y ** 2);
+        if (slime.gameData.boostTimer > 0 || speed > 15) {
+            if (Math.random() < 0.5) { // Frequent updates
+                slime.gameData.afterimages.push({
+                    x: slime.position.x,
+                    y: slime.position.y,
+                    opacity: 0.5,
+                    scale: 1.0
+                });
+            }
+        }
+
+        // Update ghosts
+        for (let i = slime.gameData.afterimages.length - 1; i >= 0; i--) {
+            const ghost = slime.gameData.afterimages[i];
+            ghost.opacity -= 0.04; // Fade out
+            ghost.scale -= 0.03; // Shrink
+            if (ghost.opacity <= 0 || ghost.scale <= 0) {
+                slime.gameData.afterimages.splice(i, 1);
+            }
         }
     });
 
